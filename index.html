@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Profesyonel PDKS - İK Yönetimi</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; background-color: #f5f7fb; color: #333; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; font-size: 14px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #2c3e50; color: white; }
+        .kutu { margin-bottom: 20px; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        input, select { padding: 8px; margin-right: 5px; border: 1px solid #cbd5e1; border-radius: 4px; }
+        button { padding: 10px 15px; background-color: #3182ce; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-excel { background-color: #27ae60; }
+        .btn-cikis { background-color: #e74c3c; float: right; }
+        .btn-sil { background-color: #e74c3c; padding: 5px 10px; font-size: 12px; border-radius: 4px; color: white; border: none; cursor: pointer; }
+        .btn-sil:hover { background-color: #c0392b; }
+        .flex-container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
+        .login-container { max-width: 400px; margin: 100px auto; text-align: center; }
+        .mesaj { color: #27ae60; font-weight: bold; margin-bottom: 15px; }
+        .hata { color: #e74c3c; font-weight: bold; margin-bottom: 15px; }
+        h4 { margin-top: 0; color: #7f8c8d; }
+    </style>
+</head>
+<body>
+    <h2>🏢 Personel Devam Kontrol Sistemi</h2>
+
+    {% if not session.logged_in %}
+    <div class="kutu login-container">
+        <h3>Yönetici Girişi</h3>
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}<div class="hata">{{ messages[0] }}</div>{% endif %}
+        {% endwith %}
+        <form action="/login" method="POST">
+            <input type="text" name="kullanici_adi" placeholder="Kullanıcı Adı" required style="width: 80%; margin-bottom: 15px;"><br>
+            <input type="password" name="sifre" placeholder="Şifre" required style="width: 80%; margin-bottom: 15px;"><br>
+            <button type="submit" style="width: 85%;">Giriş Yap</button>
+        </form>
+    </div>
+    {% else %}
+    
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}<div class="kutu mesaj">{{ messages[0] }}</div>{% endif %}
+    {% endwith %}
+
+    <div class="kutu">
+        <h4>1. Yeni Personel Tanımla (Maaş ve Mesai Ayarları)</h4>
+        <form action="/personel_ekle" method="POST" class="flex-container">
+            <input type="text" name="personel_adi" placeholder="Personel Adı Soyadı" required>
+            <input type="number" name="maas" placeholder="Aylık Maaş (TL)" required>
+            <input type="time" name="mesai_baslangic" value="08:00" required>
+            <input type="time" name="mesai_bitis" value="18:00" required>
+            <button type="submit" style="background-color: #8e44ad;">Personeli Sisteme Kaydet</button>
+        </form>
+    </div>
+
+    <div class="kutu flex-container">
+        <form action="/islem" method="POST" style="flex-grow: 1;">
+            <h4>2. Günlük Giriş / Çıkış İşlemi</h4>
+            <select name="personel_id" required>
+                <option value="">-- Personel Seçin --</option>
+                {% for p in personeller %}
+                <option value="{{ p[0] }}">{{ p[1] }}</option>
+                {% endfor %}
+            </select>
+            <select name="islem_tipi">
+                <option value="Giriş">🟢 Giriş Yap</option>
+                <option value="Çıkış">🔴 Çıkış Yap</option>
+            </select>
+            <button type="submit">Hareketi Kaydet</button>
+        </form>
+        <a href="/logout"><button class="btn-cikis">Güvenli Çıkış</button></a>
+    </div>
+
+    <div class="kutu flex-container">
+        <form action="/" method="GET">
+            <input type="text" name="arama" placeholder="İsime göre filtrele..." value="{{ aranan_kelime }}">
+            <button type="submit" style="background-color: #f39c12;">Filtrele</button>
+            <a href="/" style="margin-left: 10px; color: #e74c3c; text-decoration: none;">Temizle</a>
+        </form>
+        <button class="btn-excel" onclick="exceleAktar()">📊 Excel'e Aktar</button>
+    </div>
+
+    <h3>🕒 Detaylı Hareket ve Mesai Raporu (Günlük Özet)</h3>
+    <table id="raporTablosu">
+        <tr>
+            <th>Tarih</th>
+            <th>Personel Adı</th>
+            <th>Giriş Saati</th>
+            <th>Çıkış Saati</th>
+            <th>Top. Çalışma (Saat)</th>
+            <th>Fazla Mesai (Saat)</th>
+            <th>Mesai Kazancı (TL)</th>
+            <th>Aksiyon</th>
+        </tr>
+        {% for kayit in kayitlar %}
+        <tr>
+            <td>{{ kayit[0] }}</td>
+            <td>{{ kayit[1] }}</td>
+            <td><span style="color: #27ae60; font-weight: bold;">{{ kayit[2] }}</span></td>
+            <td><span style="color: #c0392b; font-weight: bold;">{{ kayit[3] if kayit[3] else '--:--:--' }}</span></td>
+            <td>{{ kayit[4] if kayit[4] else '0.0' }}</td>
+            <td style="color: {% if kayit[5] and kayit[5] > 0 %}#e67e22; font-weight:bold;{% else %}#7f8c8d{% endif %}">{{ kayit[5] if kayit[5] else '0.0' }}</td>
+            <td style="color: {% if kayit[6] and kayit[6] > 0 %}#27ae60; font-weight:bold;{% else %}#7f8c8d{% endif %}">{{ kayit[6] if kayit[6] else '0.0' }} ₺</td>
+            <td>
+                <a href="/kayit_sil/{{ kayit[8] }}/{{ kayit[7] if kayit[7] else 0 }}" onclick="return confirm('Bu günkü giriş/çıkış kayıtlarını kalıcı olarak silmek istediğinize emin misiniz?');">
+                    <button class="btn-sil">🗑️ Sil</button>
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <script>
+        function exceleAktar() {
+            var csv = [];
+            var rows = document.querySelectorAll("table tr");
+            for (var i = 0; i < rows.length; i++) {
+                var row = [], cols = rows[i].querySelectorAll("td, th");
+                var hucreUzunlugu = cols.length - 1; 
+                for (var j = 0; j < hucreUzunlugu; j++) {
+                    row.push(cols[j].innerText.replace(' ₺', ''));
+                }
+                if(row.length > 0) csv.push(row.join(";"));
+            }
+            var csvContent = "\uFEFF" + csv.join("\n");
+            var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            var link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "Gunluk_PDKS_Raporu.csv";
+            link.click();
+        }
+    </script>
+    {% endif %}
+</body>
+</html>
